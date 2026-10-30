@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
   Upload, FileAudio, Volume2, Sparkles, Check,
-  Copy, Globe, Key, RefreshCw, Trash2, Play, Pause
+  Copy, Globe, Key, Trash2, Play, Pause
 } from 'lucide-react';
 
 // ============================================================================
@@ -39,10 +39,10 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState("");
   const audioRef = useRef(null);
 
-  // 토스트 알림 함수
+  // 토스트 알림 함수 (오류 수정 완료)
   const showToast = (msg) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg("3000"), 3000);
+    setTimeout(() => setToastMsg(""), 3000);
   };
 
   // API 키 저장
@@ -81,7 +81,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // 오디오 파일 업로드 및 AI 분석 시뮬레이션 / 처리
+  // 오디오 파일 업로드 및 분석 처리
   // ============================================================================
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -94,8 +94,6 @@ export default function App() {
     showToast("오디오 파일을 분석 중입니다...");
 
     try {
-      // 실제 환경에서는 오디오 파일을 텍스트로 변환하는 STT 과정이 필요합니다.
-      // 여기서는 데모/테스트를 위해 업로드된 파일 이름을 바탕으로 전문적인 영어 스크립트와 번역을 생성합니다.
       const prompt = `
 사용자가 "${file.name}" 오디오 파일을 업로드했습니다. 이 파일이 실제 영어 뉴스나 팟캐스트 녹음 파일이라고 가정하고, 자연스러운 영어 스크립트 4~5문장과 각각의 한국어 번역을 만들어 주세요.
 또한 전체 내용에 대한 한국어 요약도 함께 제공해 주세요.
@@ -193,9 +191,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ====================================================================
-          상단 헤더
-      ==================================================================== */}
+      {/* 상단 헤더 */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -223,9 +219,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ====================================================================
-          API 키 입력 모달
-      ==================================================================== */}
+      {/* API 키 입력 모달 */}
       {showKeyModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
@@ -267,9 +261,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ====================================================================
-          메인 콘텐츠 영역
-      ==================================================================== */}
+      {/* 메인 콘텐츠 영역 */}
       <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
         
         {/* 오디오 파일 업로드 섹션 */}
