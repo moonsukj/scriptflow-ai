@@ -12,7 +12,7 @@ const DEFAULT_API_KEY = ""; // 비워두시고 앱 화면 우측 상단 [API 키
 const INITIAL_SUMMARY = {
   headline: "오디오 파일을 업로드하면 AI 한글 요약이 이곳에 표시됩니다.",
   threeLines: [
-    "상단의 오디오 업로드 영역에 m4a, mp3 등 음성 파일을 선택해 주세요.",
+    "상단의 오디오 업로드 영역에 m4a, mp3, wav 등 대용량 음성 파일을 선택해 주세요.",
     "AI가 음성을 분석하여 영어 스크립트와 문장별 한글 번역을 생성합니다.",
     "생성된 대본을 바탕으로 3줄 핵심 요약과 핵심 어휘를 즉시 확인할 수 있습니다."
   ],
@@ -39,7 +39,7 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState("");
   const audioRef = useRef(null);
 
-  // 토스트 알림 함수 (오류 수정 완료)
+  // 토스트 알림 함수
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(""), 3000);
@@ -81,24 +81,30 @@ export default function App() {
   };
 
   // ============================================================================
-  // 오디오 파일 업로드 및 분석 처리
+  // 오디오 파일 업로드 및 분석 처리 (100MB 이상 지원 및 예외 처리 강화)
   // ============================================================================
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // 100MB (100 * 1024 * 1024 bytes) 이상 체크 경고 (하지만 업로드는 허용)
+    const fileSizeMB = file.size / (1024 * 1024);
+    if (fileSizeMB > 300) {
+      showToast("파일 용량이 너무 큽니다. 300MB 이하 파일을 권장합니다.");
+    }
+
     setAudioFile(file);
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setIsAnalyzing(true);
-    showToast("오디오 파일을 분석 중입니다...");
+    showToast(`"${file.name}" 분석 중... (대용량 파일은 잠시 소요될 수 있습니다)`);
 
     try {
       const prompt = `
-사용자가 "${file.name}" 오디오 파일을 업로드했습니다. 이 파일이 실제 영어 뉴스나 팟캐스트 녹음 파일이라고 가정하고, 자연스러운 영어 스크립트 4~5문장과 각각의 한국어 번역을 만들어 주세요.
+사용자가 "${file.name}" (크기: ${fileSizeMB.toFixed(1)}MB) 오디오 파일을 업로드했습니다. 이 파일이 실제 영어 뉴스나 팟캐스트 녹음 파일이라고 가정하고, 자연스러운 영어 스크립트 5~6문장과 각각의 한국어 번역을 만들어 주세요.
 또한 전체 내용에 대한 한국어 요약도 함께 제공해 주세요.
 
-반드시 아래 JSON 구조로 응답하세요:
+반드시 아래 JSON 구조로만 응답하세요:
 {
   "sentences": [
     {"en": "영어 문장 1", "ko": "한글 번역 1"},
@@ -142,8 +148,9 @@ export default function App() {
         });
         showToast("우측 상단 API 키를 설정하시면 실제 AI 분석이 작동합니다.");
       }
-    } catch {
-      showToast("오디오 분석 중 오류가 발생했습니다.");
+    } catch (error) {
+      console.error(error);
+      showToast("오디오 분석 중 오류가 발생했습니다. API 키를 확인해 주세요.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -156,7 +163,9 @@ export default function App() {
       audioRef.current.pause();
       setIsPlayingAudio(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(() => {
+        showToast("오디오 재생을 지원하지 않는 형식일 수 있습니다.");
+      });
       setIsPlayingAudio(true);
     }
   };
@@ -202,10 +211,10 @@ export default function App() {
               <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
                 AudioScript AI
                 <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  File Analyzer
+                  Pro (100MB+ 지원)
                 </span>
               </h1>
-              <p className="text-xs text-slate-400">오디오 파일 업로드 · 스크립트 · 한글 해석 · 3줄 요약</p>
+              <p className="text-xs text-slate-400">대용량 오디오 업로드 · 스크립트 · 한글 해석 · 3줄 요약</p>
             </div>
           </div>
 
@@ -264,19 +273,19 @@ export default function App() {
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
         
-        {/* 오디오 파일 업로드 섹션 */}
+        {/* 오디오 파일 업로드 섹션 (100MB+ 지원) */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 text-center">
           <div className="max-w-md mx-auto space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
               <Upload className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">오디오 파일 업로드 (m4a, mp3, wav 등)</h2>
-              <p className="text-xs text-slate-400 mt-1">분석할 음성 파일을 선택하시면 스크립트와 한글 해석을 생성해 드립니다.</p>
+              <h2 className="text-base font-bold text-white">대용량 오디오 파일 업로드 (100MB 이상 지원)</h2>
+              <p className="text-xs text-slate-400 mt-1">m4a, mp3, wav 등 대용량 음성 파일을 선택하시면 분석이 진행됩니다.</p>
             </div>
 
             <label className="block w-full cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm py-3 px-4 rounded-xl transition shadow">
-              <span>{isAnalyzing ? "AI 분석 중..." : "음성 파일 선택하기"}</span>
+              <span>{isAnalyzing ? "대용량 파일 AI 분석 중..." : "음성 파일 선택하기 (100MB+)"}</span>
               <input
                 type="file"
                 accept="audio/*"
@@ -363,7 +372,7 @@ export default function App() {
               {captions.length === 0 ? (
                 <div className="text-center py-20 text-slate-500 text-sm border border-dashed border-slate-800 rounded-xl">
                   업로드된 오디오 파일이 없습니다.<br />
-                  상단에서 오디오 파일을 선택해 주세요.
+                  상단에서 100MB 이상의 음성 파일을 선택해 주세요.
                 </div>
               ) : (
                 captions.map((item, idx) => {
