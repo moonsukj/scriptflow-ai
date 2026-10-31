@@ -10,7 +10,7 @@ export default function App() {
   const fileInputRef = useRef(null);
 
   // 환경 변수 또는 직접 입력할 Gemini API 키
-  const apiKey = ""; 
+  const apiKey = "AQ.Ab8RN6Iar8gwjtSGz_6DlwMKvAJLsSZ2CnEJiIcoktPNuBb1TQ"; 
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
