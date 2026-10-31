@@ -4,21 +4,29 @@ import {
   Copy, Globe, Key, Trash2, Play, Pause
 } from 'lucide-react';
 
+// ============================================================================
+// 초기 설정
+// ============================================================================
+const DEFAULT_API_KEY = ""; // 우측 상단 [API 키 설정] 버튼을 통해 입력하세요.
+
 const INITIAL_SUMMARY = {
   headline: "오디오 파일을 업로드하면 AI 한글 요약이 이곳에 표시됩니다.",
   threeLines: [
     "상단의 오디오 업로드 영역에 m4a, mp3, wav 등 음성 파일을 선택해 주세요.",
-    "업로드된 파일명과 메타데이터를 바탕으로 영어 스크립트와 문장별 한글 번역이 즉시 생성됩니다.",
+    "업로드된 오디오 데이터가 Gemini AI로 전송되어 정밀 분석됩니다.",
     "생성된 대본을 바탕으로 3줄 핵심 요약과 핵심 어휘를 바로 확인할 수 있습니다."
   ],
-  facts: ["안정적인 로컬 분석 엔진 적용됨", "네트워크 오류 차단 완료"],
+  facts: ["멀티모달 오디오 분석 엔진 적용됨", "파일 데이터 직접 처리 완료"],
   vocab: [
-    { word: "analysis", meaning: "분석", example: "audio file analysis" },
+    { word: "multimodal", meaning: "멀티모달(텍스트·오디오 통합 처리)", example: "multimodal AI analysis" },
     { word: "transcript", meaning: "대본, 스크립트", example: "generated transcript" }
   ]
 };
 
 export default function App() {
+  const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('scriptflow_api_key') || DEFAULT_API_KEY);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -37,8 +45,31 @@ export default function App() {
     setTimeout(() => setToastMsg(""), 3000);
   };
 
-  // 오디오 파일 선택 시 에러 없이 완벽하게 대본을 생성하는 안정화된 로직
-  const handleFileUpload = (e) => {
+  const handleSaveApiKey = (val) => {
+    setUserApiKey(val);
+    localStorage.setItem('scriptflow_api_key', val);
+    setShowKeyModal(false);
+    showToast("Gemini API 키가 저장되었습니다.");
+  };
+
+  // 파일을 Base64로 변환하는 헬퍼 함수
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        // "data:audio/mp3;base64,xxxx..." 형식에서 순수 base64 데이터만 추출
+        const base64String = reader.result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // ============================================================================
+  // 오디오 파일을 실제 Gemini API로 분석하는 함수
+  // ============================================================================
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -46,53 +77,96 @@ export default function App() {
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setIsAnalyzing(true);
-    showToast(`"${file.name}" 분석 중...`);
+    showToast(`"${file.name}" 음성 파일을 분석 중입니다...`);
 
-    // 네트워크 오류를 원천 차단하기 위해 즉시 고품질 스크립트 생성
-    setTimeout(() => {
-      const fileName = file.name;
-      setCaptions([
-        { 
-          en: `Successfully loaded audio file: "${fileName}".`, 
-          ko: `오디오 파일 "${fileName}"이(가) 성공적으로 로드되었습니다.` 
-        },
-        { 
-          en: "The system has parsed the audio track and structured the dialogue into sequential sentences.", 
-          ko: "시스템이 오디오 트랙을 파싱하여 대화를 순차적인 문장으로 구조화했습니다." 
-        },
-        { 
-          en: "Key economic indicators and global trends are being discussed in this segment.", 
-          ko: "이 세그먼트에서는 주요 경제 지표와 글로벌 동향이 논의되고 있습니다." 
-        },
-        { 
-          en: "Listeners are advised to review the accompanying summary and vocabulary notes below.", 
-          ko: "청취자께서는 아래의 동봉된 요약 및 어휘 노트를 참고하시기 바랍니다." 
+    const keyToUse = userApiKey?.trim();
+    if (!keyToUse) {
+      showToast("우측 상단 [API 키 설정]에서 Gemini API 키를 먼저 입력해주세요.");
+      setIsAnalyzing(false);
+      return;
+    }
+
+    try {
+      // 1. 오디오 파일을 Base64로 변환
+      const base64Audio = await fileToBase64(file);
+
+      // 2. Gemini 2.5 Flash 멀티모달 API 호출
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keyToUse}`;
+      
+      const payload = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: file.type || "audio/mp3",
+                  data: base64Audio
+                }
+              },
+              {
+                text: `이 오디오 파일(${file.name})의 내용을 청취하고 분석해주세요. 
+주어진 음성 내용을 바탕으로 다음 사항을 작성하여 반드시 아래 JSON 구조로만 응답하세요:
+1. 문장별 영어 스크립트와 각각의 자연스러운 한국어 번역 대조 목록 ("sentences")
+2. 전체 내용에 대한 한국어 요약 헤드라인, 3줄 요약, 주요 팩트 및 핵심 어휘 ("summary")
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{
+  "sentences": [
+    {"en": "영어 문장 1", "ko": "한글 번역 1"},
+    {"en": "영어 문장 2", "ko": "한글 번역 2"}
+  ],
+  "summary": {
+    "headline": "핵심 한글 헤드라인",
+    "threeLines": ["요약 1", "요약 2", "요약 3"],
+    "facts": ["팩트 1", "팩트 2"],
+    "vocab": [
+      {"word": "핵심 단어", "meaning": "뜻", "example": "예문"}
+    ]
+  }
+}`
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      ]);
+      };
 
-      setSummary({
-        headline: `"${fileName}" 음성 파일 분석 리포트`,
-        threeLines: [
-          `업로드된 음성 파일(${fileName})의 오디오 트랙 구조 분석 완료`,
-          "주요 글로벌 경제 및 트렌드 관련 핵심 대화 내용 추출",
-          "문장별 한글 해석 및 필수 학습 어휘 매핑 완료"
-        ],
-        facts: [
-          `파일명: ${fileName}`,
-          `파일 크기: ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          "상태: 분석 완료 및 대본 동기화"
-        ],
-        vocab: [
-          { word: "structured", meaning: "구조화된", example: "structured the dialogue" },
-          { word: "indicator", meaning: "지표", example: "economic indicators" },
-          { word: "accompanying", meaning: "동봉된, 첨부된", example: "accompanying summary" }
-        ]
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
 
+      if (!response.ok) {
+        throw new Error("AI 분석 서버 통신 실패");
+      }
+
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!rawText) {
+        throw new Error("AI 응답 데이터가 없습니다.");
+      }
+
+      const parsedResult = JSON.parse(rawText);
+
+      if (parsedResult && parsedResult.sentences && parsedResult.summary) {
+        setCaptions(parsedResult.sentences);
+        setSummary(parsedResult.summary);
+        setCurrentSentenceIdx(0);
+        showToast("오디오 파일 분석 및 대본 생성 완료!");
+      } else {
+        throw new Error("JSON 파싱 실패");
+      }
+
+    } catch (error) {
+      console.error(error);
+      showToast("오디오 분석 중 오류가 발생했습니다. API 키 또는 파일 형식을 확인해주세요.");
+    } finally {
       setIsAnalyzing(false);
-      setCurrentSentenceIdx(0);
-      showToast("오디오 분석 및 대본 생성 완료!");
-    }, 800);
+    }
   };
 
   const toggleAudioPlay = () => {
@@ -144,15 +218,64 @@ export default function App() {
             <div>
               <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
                 AudioScript AI
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Stable Reader
+                <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  Audio Analyzer
                 </span>
               </h1>
-              <p className="text-xs text-slate-400">오디오 파일 업로드 · 스크립트 · 한글 해석 · 3줄 요약</p>
+              <p className="text-xs text-slate-400">오디오 업로드 · 실제 AI 음성 분석 · 한글 해석 · 3줄 요약</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowKeyModal(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+          >
+            <Key className="w-3.5 h-3.5 text-amber-400" />
+            <span>{userApiKey ? "API 키 설정됨" : "API 키 설정"}</span>
+          </button>
+        </div>
+      </header>
+
+      {showKeyModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-400" />
+                Gemini API 키 설정
+              </h3>
+              <button onClick={() => setShowKeyModal(false)} className="text-slate-400 hover:text-white text-sm">닫기</button>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Google AI Studio에서 발급받은 무료 API 키(`AIzaSy...`)를 입력하세요. 오디오 파일 분석에 필수적입니다.
+            </p>
+            <input
+              type="password"
+              defaultValue={userApiKey}
+              id="api-key-input"
+              placeholder="AIzaSy..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowKeyModal(false)}
+                className="px-4 py-2 rounded-xl text-xs bg-slate-800 text-slate-300"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  const val = document.getElementById('api-key-input').value;
+                  handleSaveApiKey(val);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+              >
+                저장하기
+              </button>
             </div>
           </div>
         </div>
-      </header>
+      )}
 
       <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 text-center">
@@ -162,11 +285,11 @@ export default function App() {
             </div>
             <div>
               <h2 className="text-base font-bold text-white">오디오 파일 업로드 (m4a, mp3, wav 등)</h2>
-              <p className="text-xs text-slate-400 mt-1">음성 파일을 선택하시면 오류 없이 즉시 대본과 해석이 생성됩니다.</p>
+              <p className="text-xs text-slate-400 mt-1">음성 파일을 선택하면 Gemini AI가 직접 청취하고 스크립트를 추출합니다.</p>
             </div>
 
             <label className="block w-full cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm py-3 px-4 rounded-xl transition shadow">
-              <span>{isAnalyzing ? "파일 분석 중..." : "음성 파일 선택하기"}</span>
+              <span>{isAnalyzing ? "AI 음성 파일 분석 중..." : "음성 파일 선택하기"}</span>
               <input
                 type="file"
                 accept="audio/*"
